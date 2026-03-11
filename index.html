@@ -2,329 +2,695 @@
 <html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
-    <title>迷霧探險：戰術能量版</title>
+    <title>迷霧探險</title>
+    <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
     <style>
         body, html { margin: 0; padding: 0; width: 100%; height: 100%; background: #000; overflow: hidden; font-family: 'Microsoft JhengHei', sans-serif; }
-        #lobby { position: absolute; z-index: 100; top: 50%; left: 50%; transform: translate(-50%, -50%); background: rgba(22, 27, 34, 0.95); padding: 40px; border-radius: 15px; text-align: center; border: 1px solid #30363d; color: white; min-width: 350px; }
+        #lobby { position: absolute; z-index: 100; top: 50%; left: 50%; transform: translate(-50%, -50%); background: rgba(22,27,34,0.97); padding: 40px; border-radius: 15px; text-align: center; border: 1px solid #30363d; color: white; min-width: 340px; }
         .menu-page { display: none; }
         .menu-page.active { display: block; }
         #game-container { width: 100vw; height: 100vh; position: relative; display: none; }
         canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
         #mazeCanvas { z-index: 5; }
-        #fogCanvas { z-index: 10; pointer-events: none; }
-        
-        /* 介面 UI */
-        #ui-layer { position: absolute; top: 20px; left: 20px; z-index: 50; background: rgba(0,0,0,0.7); padding: 12px 20px; border-radius: 8px; color: white; border: 1px solid rgba(88, 166, 255, 0.3); }
+        #fogCanvas  { z-index: 10; pointer-events: none; }
+
+        #ui-layer { position: absolute; top: 20px; left: 20px; z-index: 50; background: rgba(0,0,0,0.7); padding: 12px 20px; border-radius: 8px; color: white; border: 1px solid rgba(88,166,255,0.3); font-size: 14px; }
         #stamina-container { position: absolute; bottom: 20px; right: 20px; z-index: 50; background: rgba(0,0,0,0.8); padding: 15px; border-radius: 10px; border: 1px solid #30363d; width: 220px; }
         #stamina-bar-bg { width: 100%; height: 12px; background: #21262d; border-radius: 6px; overflow: hidden; }
         #stamina-bar-fill { width: 100%; height: 100%; background: #238636; transition: width 0.1s linear; }
         #stamina-text { color: white; font-size: 14px; font-weight: bold; margin-bottom: 5px; display: flex; justify-content: space-between; }
         #warning-text { color: #f85149; font-size: 11px; text-align: center; margin-top: 5px; display: none; animation: blink 1s infinite; }
-        @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+        @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.3} }
 
-        /* 全螢幕結束大字樣式 */
-        #game-over-overlay { 
-            position: absolute; top: 0; left: 0; width: 100%; height: 100%; 
-            background: rgba(0, 0, 0, 0.85); z-index: 200; 
-            display: none; flex-direction: column; justify-content: center; align-items: center; 
-            color: white; text-align: center; backdrop-filter: blur(5px);
-        }
-        #end-title { font-size: 64px; font-weight: bold; margin-bottom: 20px; text-shadow: 0 0 20px rgba(255,255,255,0.5); }
-        #end-subtitle { font-size: 24px; color: #8b949e; margin-bottom: 30px; }
+        #game-over-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); z-index: 200; display: none; flex-direction: column; justify-content: center; align-items: center; color: white; text-align: center; backdrop-filter: blur(5px); }
+        #end-title { font-size: 60px; font-weight: bold; margin-bottom: 20px; text-shadow: 0 0 20px rgba(255,255,255,0.4); }
+        #end-subtitle { font-size: 22px; color: #8b949e; margin-bottom: 30px; }
 
-        #ready-overlay { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 60; background: rgba(13, 17, 23, 0.95); padding: 40px; border-radius: 15px; text-align: center; border: 2px solid #58a6ff; color: white; }
-        button { background: #238636; color: white; border: none; padding: 12px 24px; border-radius: 8px; cursor: pointer; font-weight: bold; margin: 10px; font-size: 16px; transition: 0.2s; }
+        #waiting-overlay { position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); z-index: 150; background: rgba(13,17,23,0.97); padding: 40px 50px; border-radius: 15px; border: 2px solid #58a6ff; color: white; text-align: center; display: none; }
+        #waiting-overlay h2 { margin: 0 0 12px; color: #58a6ff; }
+        #room-id-box { font-size: 36px; font-weight: bold; letter-spacing: 8px; color: #f1e05a; margin: 16px 0; background: rgba(255,255,255,0.05); padding: 14px 28px; border-radius: 8px; cursor: pointer; }
+        #room-id-box:hover::after { content: ' 📋'; font-size: 20px; }
+
+        button { background: #238636; color: white; border: none; padding: 12px 24px; border-radius: 8px; cursor: pointer; font-weight: bold; margin: 8px; font-size: 15px; transition: 0.2s; }
         button:hover { background: #2ea043; transform: scale(1.05); }
-        input { padding: 12px; background: #0d1117; border: 1px solid #30363d; color: white; border-radius: 6px; margin: 10px; }
+        button.secondary { background: #444; }
+        button.secondary:hover { background: #555; transform: scale(1.05); }
+        input { padding: 12px; background: #0d1117; border: 1px solid #30363d; color: white; border-radius: 6px; margin: 8px; font-size: 18px; width: 160px; text-align: center; letter-spacing: 5px; text-transform: uppercase; }
+        hr { border: none; border-top: 1px solid #30363d; margin: 20px 0; }
+        #connect-status { font-size: 13px; color: #f85149; margin-top: 6px; min-height: 18px; }
+        #stun-indicator    { position: absolute; top: 20px; left: 50%; transform: translateX(-50%); z-index: 50; background: rgba(0,0,0,0.85); padding: 10px 22px; border-radius: 10px; color: #f1e05a; border: 2px solid #f1e05a; font-size: 15px; font-weight: bold; display: none; text-align: center; }
+        #reverse-indicator { position: absolute; top: 70px; left: 50%; transform: translateX(-50%); z-index: 50; background: rgba(20,0,0,0.9); padding: 10px 22px; border-radius: 10px; color: #ff4444; border: 2px solid #ff0000; font-size: 15px; font-weight: bold; display: none; text-align: center; animation: shake 0.3s infinite; }
+        @keyframes shake { 0%,100%{transform:translateX(-50%) rotate(-1deg)} 50%{transform:translateX(-50%) rotate(1deg)} }
+        #teleport-flash { position:absolute; top:0; left:0; width:100%; height:100%; z-index:100; background:rgba(0,220,255,0.35); display:none; pointer-events:none; }
     </style>
 </head>
 <body>
 
-    <div id="lobby">
-        <div id="page-mode" class="menu-page active">
-            <h1>迷霧探險</h1>
-            <button onclick="showPage('page-size-ai')">AI 追擊模式</button>
-            <button onclick="showPage('page-size-pvp')">雙人對戰模式</button>
-        </div>
-        <div id="page-size-ai" class="menu-page">
-            <h1>選擇 AI 難度</h1>
-            <button onclick="startGame(21, true)">20x20 小型</button>
-            <button onclick="startGame(41, true)">40x40 大型</button>
-            <br><button style="background:#444" onclick="showPage('page-mode')">返回</button>
-        </div>
-        <div id="page-size-pvp" class="menu-page">
-            <h1>雙人對戰</h1>
-            <button onclick="startGame(21, false)">建立 20x20 房間</button>
-            <hr style="border:0.5px solid #333; margin:20px 0;">
-            <input type="text" id="roomInput" placeholder="輸入房間 ID">
-            <button onclick="joinRoom()">加入房間</button>
-            <br><button style="background:#444" onclick="showPage('page-mode')">返回</button>
-        </div>
+<div id="lobby">
+    <div id="page-mode" class="menu-page active">
+        <h1 style="color:#58a6ff; margin-bottom:30px">迷霧探險</h1>
+        <button onclick="showPage('page-ai')">🤖 AI 追擊模式</button><br>
+        <button onclick="showPage('page-pvp')" style="background:#6e40c9">👥 雙人對戰</button>
     </div>
 
-    <div id="game-container">
-        <div id="game-over-overlay">
-            <div id="end-title"></div>
-            <div id="end-subtitle">感謝遊玩</div>
-            <button onclick="window.location.reload()" style="background: #58a6ff;">回到主頁</button>
-        </div>
-
-        <div id="ui-layer">房間: <span id="displayId" style="color:#58a6ff"></span> | <span id="status-text">準備中</span></div>
-        
-        <div id="stamina-container">
-            <div id="stamina-text"><span>能量</span><span id="stamina-pct">100%</span></div>
-            <div id="stamina-bar-bg"><div id="stamina-bar-fill"></div></div>
-            <div id="warning-text">⚠️ 能量枯竭：無法移動</div>
-        </div>
-
-        <div id="ready-overlay">
-            <h2>等待雙方就緒</h2>
-            <button id="btn-ready">我準備好了</button>
-        </div>
-
-        <canvas id="mazeCanvas"></canvas>
-        <canvas id="fogCanvas"></canvas>
+    <div id="page-ai" class="menu-page">
+        <h2>選擇地圖大小</h2>
+        <button onclick="startSinglePlayer(21)">20×20 小型</button>
+        <button onclick="startSinglePlayer(41)">40×40 大型</button><br>
+        <button class="secondary" onclick="showPage('page-mode')">返回</button>
     </div>
 
-    <script type="module">
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-        import { getDatabase, ref, set, onValue, update, get } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
+    <div id="page-pvp" class="menu-page">
+        <h2 style="color:#6e40c9">雙人對戰</h2>
+        <button onclick="hostRoom(21)" style="background:#6e40c9">建立 20×20 房間</button>
+        <button onclick="hostRoom(41)" style="background:#6e40c9">建立 40×40 房間</button>
+        <hr>
+        <p style="color:#8b949e; margin:0 0 8px; font-size:13px">已有房間代碼？</p>
+        <input type="text" id="roomInput" placeholder="代碼" maxlength="6">
+        <button onclick="joinRoom()">加入</button>
+        <div id="connect-status"></div>
+        <br><button class="secondary" onclick="showPage('page-mode')">返回</button>
+    </div>
+</div>
 
-        // Firebase 設定與初始化 (沿用原有的)
-        const firebaseConfig = {
-            apiKey: "AIzaSyD7yvejwpRsWLEn_xFg-hyDEXulsinLfO4",
-            authDomain: "maze-battle-c7392.firebaseapp.com",
-            databaseURL: "https://maze-battle-c7392-default-rtdb.asia-southeast1.firebasedatabase.app",
-            projectId: "maze-battle-c7392",
-            storageBucket: "maze-battle-c7392.firebasestorage.app",
-            messagingSenderId: "718695400645",
-            appId: "1:718695400645:web:cc111a4319017c8250dcac"
-        };
-        const app = initializeApp(firebaseConfig);
-        const db = getDatabase(app);
+<div id="waiting-overlay">
+    <h2>等待對手加入…</h2>
+    <p style="color:#8b949e; margin:4px 0">將此代碼分享給對手：</p>
+    <div id="room-id-box" onclick="copyRoomId()" title="點擊複製">------</div>
+    <p style="color:#555; font-size:12px; margin:0">（點擊可複製）</p>
+</div>
 
-        // A* 尋路與變數宣告
-        class MazeEngine {
-            constructor(size, grid) { this.size = size; this.grid = grid; }
-            findPath(start, target) {
-                if (!start || !target) return [];
-                const openList = [{...start, g: 0, h: Math.abs(start.x-target.x)+Math.abs(start.y-target.y), parent: null}];
-                const closedList = new Set();
-                while (openList.length > 0) {
-                    openList.sort((a, b) => (a.g + a.h) - (b.g + b.h));
-                    const curr = openList.shift();
-                    if (curr.x === target.x && curr.y === target.y) {
-                        let path = []; let t = curr; while(t.parent) { path.push(t); t = t.parent; } return path.reverse();
-                    }
-                    closedList.add(`${curr.x},${curr.y}`);
-                    for (let [dx, dy] of [[0,1],[0,-1],[1,0],[-1,0]]) {
-                        let nx = curr.x+dx, ny = curr.y+dy;
-                        if (nx>=0 && ny>=0 && nx<this.size && ny<this.size && this.grid[ny][nx]===0 && !closedList.has(`${nx},${ny}`)) {
-                            if (!openList.find(o => o.x===nx && o.y===ny)) openList.push({x:nx, y:ny, g:curr.g+1, h:Math.abs(nx-target.x)+Math.abs(ny-target.y), parent:curr});
-                        }
-                    }
+<div id="game-container">
+    <div id="game-over-overlay">
+        <div id="end-title"></div>
+        <div id="end-subtitle">感謝遊玩</div>
+        <button onclick="window.location.reload()" style="background:#58a6ff">回到主頁</button>
+    </div>
+    <div id="teleport-flash"></div>
+    <div id="stun-indicator">💫 鬼暈眩中！<span id="stun-timer">3.0</span>s</div>
+    <div id="reverse-indicator">💀 操控反轉！<span id="reverse-timer">3.0</span>s</div>
+    <div id="ui-layer">
+        <span id="ui-mode">迷霧探險</span>
+        <span style="margin:0 8px; color:#444">|</span>
+        <span id="ui-role" style="color:#58a6ff"></span>
+    </div>
+    <div id="stamina-container">
+        <div id="stamina-text"><span>能量</span><span id="stamina-pct">100%</span></div>
+        <div id="stamina-bar-bg"><div id="stamina-bar-fill"></div></div>
+        <div id="warning-text">⚠️ 能量枯竭：無法移動</div>
+    </div>
+    <canvas id="mazeCanvas"></canvas>
+    <canvas id="fogCanvas"></canvas>
+</div>
+
+<script>
+// ── A* ────────────────────────────────────────────────────
+class MazeEngine {
+    constructor(size, grid) { this.size = size; this.grid = grid; }
+    findPath(start, target) {
+        if (!start || !target) return [];
+        const open = [{ ...start, g: 0, h: dist(start, target), parent: null }];
+        const closed = new Set();
+        while (open.length) {
+            open.sort((a, b) => (a.g + a.h) - (b.g + b.h));
+            const cur = open.shift();
+            if (cur.x === target.x && cur.y === target.y) {
+                const path = []; let t = cur;
+                while (t.parent) { path.push(t); t = t.parent; }
+                return path.reverse();
+            }
+            closed.add(`${cur.x},${cur.y}`);
+            for (const [dx, dy] of [[0,1],[0,-1],[1,0],[-1,0]]) {
+                const nx = cur.x+dx, ny = cur.y+dy;
+                if (nx>=0 && ny>=0 && nx<this.size && ny<this.size &&
+                    this.grid[ny][nx]===0 && !closed.has(`${nx},${ny}`) &&
+                    !open.find(o => o.x===nx && o.y===ny)) {
+                    open.push({ x:nx, y:ny, g:cur.g+1, h:dist({x:nx,y:ny},target), parent:cur });
                 }
-                return [];
             }
         }
+        return [];
+    }
+}
+const dist = (a, b) => Math.abs(a.x-b.x) + Math.abs(a.y-b.y);
 
-        let roomId, playerRole, mazeData, mazeSize, tileSize, isAIMode;
-        let myPos = { x: 1, y: 1 };
-        let canMove = false;
-        let stamina = 100;
-        let lastMoveTime = 0;
-        let moveCooldown = 200;
-        let aiTick = null;
-        let isGameOver = false;
+// ── 遊戲狀態 ──────────────────────────────────────────────
+let mazeData, mazeSize, goal, engine;
+let myPos = { x:1, y:1 };
+let aiPos = null;
+let stamina = 100, lastMoveTime = 0;
+let canMove = false, isGameOver = false;
+let aiTick = null, staminaTick = null;
 
-        const mCanvas = document.getElementById('mazeCanvas');
-        const fCanvas = document.getElementById('fogCanvas');
-        const mCtx = mCanvas.getContext('2d');
-        const fCtx = fCanvas.getContext('2d');
+// 多人
+let isMultiplayer = false;
+let playerRole = null;   // 'player1' | 'player2'
+let peer = null;
+let conn = null;
+let currentRoomCode = '';
 
-        window.showPage = (id) => {
-            document.querySelectorAll('.menu-page').forEach(p => p.classList.remove('active'));
-            document.getElementById(id).classList.add('active');
-        };
+// ── 道具系統 ──────────────────────────────────────────────
+let powerUps  = [];   // ⚡ 暈眩道具位置
+let darkTraps = [];   // 💀 黑暗詭計陷阱位置
+let aiStunned = false;
+let aiStunEndTime = 0;
+let stunTimerInterval = null;
+const STUN_MS = 4000;
 
-        window.startGame = async (size, useAI) => {
-            roomId = Math.random().toString(36).substring(7);
-            playerRole = 'player1';
-            mazeSize = size;
-            isAIMode = useAI;
-            const grid = Array(size).fill().map(() => Array(size).fill(1));
-            const gen = (x, y) => {
-                grid[y][x] = 0;
-                const dirs = [[0,2],[0,-2],[2,0],[-2,0]].sort(() => Math.random()-0.5);
-                for(let [dx,dy] of dirs){
-                    let nx=x+dx, ny=y+dy;
-                    if(nx>0 && nx<size && ny>0 && ny<size && grid[ny][nx]===1){ grid[y+dy/2][x+dx/2]=0; gen(nx, ny); }
-                }
-            };
-            gen(1,1);
-            await set(ref(db, `rooms/${roomId}`), {
-                status: 'waiting', maze: grid, size: size,
-                goal: {x: size-2, y: size-2},
-                players: { player1: {x:1, y:1, ready: false} },
-                isAIMode: useAI
-            });
-            initGame();
-        };
+let controlsReversed = false;
+let reverseEndTime = 0;
+let reverseTimerInterval = null;
+const REVERSE_MS = 3000;
 
-        window.joinRoom = async () => {
-            roomId = document.getElementById('roomInput').value;
-            if(!roomId) return;
-            playerRole = 'player2';
-            const snap = await get(ref(db, `rooms/${roomId}`));
-            if(!snap.exists()) return alert("找不到房間");
-            await update(ref(db, `rooms/${roomId}/players/player2`), {x:1, y:1, ready: false});
-            initGame();
-        };
+let portals = [];   // 🌀 傳送門位置（成對，踩到隨機傳送）
+const PORTAL_SAFE_DIST = 5; // 傳送目的地距終點最少格數
 
-        function initGame() {
-            document.getElementById('lobby').style.display = 'none';
-            document.getElementById('game-container').style.display = 'block';
-            document.getElementById('displayId').innerText = roomId;
-
-            document.getElementById('btn-ready').onclick = () => {
-                update(ref(db, `rooms/${roomId}/players/${playerRole}`), { ready: true });
-                document.getElementById('btn-ready').disabled = true;
-                document.getElementById('btn-ready').innerText = "等待中...";
-            };
-
-            // 原地回能系統
-            setInterval(() => {
-                if (!canMove || isGameOver) return;
-                const now = Date.now();
-                if (now - lastMoveTime >= moveCooldown) {
-                    stamina = Math.min(100, stamina + (stamina >= 50 ? 4 : 2));
-                    updateUI();
-                }
-            }, 200);
-
-            onValue(ref(db, `rooms/${roomId}`), (snap) => {
-                const data = snap.val();
-                if (!data || isGameOver) return;
-                mazeData = data.maze; mazeSize = data.size;
-
-                mCanvas.width = fCanvas.width = window.innerWidth;
-                mCanvas.height = fCanvas.height = window.innerHeight;
-                tileSize = Math.min(mCanvas.width, mCanvas.height) / (mazeSize + 2);
-
-                if (data.players.player1?.ready && (data.isAIMode || data.players.player2?.ready) && data.status !== 'playing') {
-                    update(ref(db, `rooms/${roomId}`), { status: 'playing' });
-                    if (data.isAIMode) setTimeout(() => update(ref(db, `rooms/${roomId}/ai`), {x:1, y:1}), 3000);
-                }
-
-                if (data.status === 'playing') {
-                    document.getElementById('ready-overlay').style.display = 'none';
-                    document.getElementById('status-text').innerText = "生存中";
-                    canMove = true;
-
-                    if (playerRole === 'player1' && data.isAIMode && data.ai && !aiTick) {
-                        const engine = new MazeEngine(mazeSize, mazeData);
-                        aiTick = setInterval(async () => {
-                            const d = (await get(ref(db, `rooms/${roomId}`))).val();
-                            if (isGameOver) return;
-                            const path = engine.findPath(d.ai, d.players.player1);
-                            if (path.length > 0) update(ref(db, `rooms/${roomId}/ai`), {x: path[0].x, y: path[0].y});
-                        }, 400); // AI 400ms
-                    }
-                }
-
-                draw(data);
-
-                // 判斷勝負 (使用全螢幕 UI)
-                const me = data.players[playerRole];
-                if (me.x === data.goal.x && me.y === data.goal.y) {
-                    endGame("🎉 逃脫成功！🏆", "#238636");
-                } else if (data.ai && me.x === data.ai.x && me.y === data.ai.y) {
-                    endGame("👾 你被抓住了...👻", "#f85149");
-                }
-            });
+function spawnItems(size, maze, count, exclude) {
+    const excSet = new Set(exclude.map(p => `${p.x},${p.y}`));
+    const candidates = [];
+    for (let y = 1; y < size-1; y++) {
+        for (let x = 1; x < size-1; x++) {
+            if (maze[y][x] !== 0) continue;
+            if (excSet.has(`${x},${y}`)) continue;
+            candidates.push({x, y});
         }
+    }
+    candidates.sort(() => Math.random() - 0.5);
+    return candidates.slice(0, count);
+}
 
-        function endGame(text, color) {
-            isGameOver = true;
-            canMove = false;
-            clearInterval(aiTick);
-            const overlay = document.getElementById('game-over-overlay');
-            const title = document.getElementById('end-title');
-            title.innerText = text;
-            title.style.color = color;
-            overlay.style.display = 'flex';
+// 傳送玩家到隨機安全位置
+function teleportPlayer() {
+    const candidates = [];
+    for (let y = 1; y < mazeSize-1; y++) {
+        for (let x = 1; x < mazeSize-1; x++) {
+            if (mazeData[y][x] !== 0) continue;
+            if (Math.abs(x - goal.x) + Math.abs(y - goal.y) <= PORTAL_SAFE_DIST) continue;
+            if (x === myPos.x && y === myPos.y) continue;
+            candidates.push({x, y});
         }
+    }
+    if (!candidates.length) return;
+    const dest = candidates[Math.floor(Math.random() * candidates.length)];
+    myPos = { x: dest.x, y: dest.y };
+    moveTo('player', dest.x, dest.y);
 
-        function updateUI() {
-            const bar = document.getElementById('stamina-bar-fill');
-            bar.style.width = stamina + '%';
-            document.getElementById('stamina-pct').innerText = stamina + '%';
-            bar.style.background = stamina < 30 ? '#f85149' : (stamina < 50 ? '#f1e05a' : '#238636');
-            document.getElementById('warning-text').style.display = stamina < 2 ? 'block' : 'none';
+    // 閃光效果
+    const flash = document.getElementById('teleport-flash');
+    flash.style.display = 'block';
+    setTimeout(() => { flash.style.display = 'none'; }, 220);
+}
+
+function activateReverse() {
+    reverseEndTime = performance.now() + (controlsReversed ? (reverseEndTime - performance.now()) + REVERSE_MS : REVERSE_MS);
+    controlsReversed = true;
+    document.getElementById('reverse-indicator').style.display = 'block';
+    clearInterval(reverseTimerInterval);
+    reverseTimerInterval = setInterval(() => {
+        const rem = (reverseEndTime - performance.now()) / 1000;
+        if (rem <= 0) {
+            controlsReversed = false;
+            document.getElementById('reverse-indicator').style.display = 'none';
+            clearInterval(reverseTimerInterval);
+        } else {
+            document.getElementById('reverse-timer').innerText = rem.toFixed(1);
         }
+    }, 80);
+}
 
-        function draw(data) {
-            mCtx.clearRect(0, 0, mCanvas.width, mCanvas.height);
-            const ox = (mCanvas.width - mazeSize * tileSize) / 2;
-            const oy = (mCanvas.height - mazeSize * tileSize) / 2;
+function activateStun() {
+    aiStunEndTime = performance.now() + (aiStunned ? (aiStunEndTime - performance.now()) + STUN_MS : STUN_MS);
+    aiStunned = true;
+    document.getElementById('stun-indicator').style.display = 'block';
+    clearInterval(stunTimerInterval);
+    stunTimerInterval = setInterval(() => {
+        const rem = (aiStunEndTime - performance.now()) / 1000;
+        if (rem <= 0) {
+            aiStunned = false;
+            document.getElementById('stun-indicator').style.display = 'none';
+            clearInterval(stunTimerInterval);
+        } else {
+            document.getElementById('stun-timer').innerText = rem.toFixed(1);
+        }
+    }, 80);
+}
 
-            mazeData.forEach((row, y) => row.forEach((cell, x) => {
-                if (cell === 1) {
-                    mCtx.fillStyle = '#161b22';
-                    mCtx.fillRect(ox + x * tileSize, oy + y * tileSize, tileSize + 0.5, tileSize + 0.5);
-                }
-            }));
+// ── 動畫（格子浮點座標）────────────────────────────────────
+let visualPos = {};
+let anims = {};
+const ANIM_MS = 130;
 
-            mCtx.fillStyle = '#f1e05a';
-            mCtx.fillRect(ox + data.goal.x * tileSize, oy + data.goal.y * tileSize, tileSize, tileSize);
+function moveTo(id, x, y) {
+    if (!visualPos[id]) { visualPos[id] = { x, y }; return; }
+    anims[id] = { fromX: visualPos[id].x, fromY: visualPos[id].y, toX: x, toY: y, startTime: performance.now() };
+}
 
-            fCtx.clearRect(0, 0, fCanvas.width, fCanvas.height);
-            fCtx.fillStyle = 'black';
-            fCtx.fillRect(0, 0, fCanvas.width, fCanvas.height);
-            fCtx.globalCompositeOperation = 'destination-out';
+// ── Canvas ────────────────────────────────────────────────
+const mCanvas = document.getElementById('mazeCanvas');
+const fCanvas = document.getElementById('fogCanvas');
+const mCtx = mCanvas.getContext('2d');
+const fCtx = fCanvas.getContext('2d');
 
-            for (let id in data.players) {
-                const p = data.players[id];
-                mCtx.fillStyle = id === 'player1' ? '#58a6ff' : '#f85149';
+function resizeCanvas() {
+    mCanvas.width = fCanvas.width = window.innerWidth;
+    mCanvas.height = fCanvas.height = window.innerHeight;
+}
+window.addEventListener('resize', resizeCanvas);
+function getTileSize() { return Math.min(mCanvas.width, mCanvas.height) / (mazeSize + 2); }
+function getOffset(ts)  { return { ox: (mCanvas.width - mazeSize*ts)/2, oy: (mCanvas.height - mazeSize*ts)/2 }; }
+
+// ── RAF 循環 ──────────────────────────────────────────────
+let loopStarted = false;
+function startAnimLoop() {
+    if (loopStarted) return;
+    loopStarted = true;
+    (function loop() {
+        const now = performance.now();
+        for (const id of Object.keys(anims)) {
+            const a = anims[id];
+            const t = Math.min(1, (now - a.startTime) / ANIM_MS);
+            const ease = 1 - Math.pow(1-t, 2);
+            visualPos[id] = { x: a.fromX+(a.toX-a.fromX)*ease, y: a.fromY+(a.toY-a.fromY)*ease };
+            if (t >= 1) delete anims[id];
+        }
+        draw();
+        requestAnimationFrame(loop);
+    })();
+}
+
+// ── 繪製 ──────────────────────────────────────────────────
+function draw() {
+    if (!mazeData) return;
+    const ts = getTileSize();
+    const { ox, oy } = getOffset(ts);
+
+    mCtx.clearRect(0, 0, mCanvas.width, mCanvas.height);
+
+    // 迷宮牆壁
+    mazeData.forEach((row, y) => row.forEach((cell, x) => {
+        if (cell === 1) { mCtx.fillStyle = '#161b22'; mCtx.fillRect(ox+x*ts, oy+y*ts, ts+0.5, ts+0.5); }
+    }));
+
+    // 終點
+    mCtx.fillStyle = '#f1e05a';
+    mCtx.beginPath();
+    mCtx.arc(ox+goal.x*ts+ts/2, oy+goal.y*ts+ts/2, ts/2.5, 0, Math.PI*2);
+    mCtx.fill();
+
+    // 地圖道具
+    if (!isMultiplayer) {
+        const now = performance.now();
+        mCtx.textAlign = 'center';
+        mCtx.textBaseline = 'middle';
+        // ⚡ 暈眩道具（藍白脈動）
+        powerUps.forEach(pu => {
+            const pulse = 1 + 0.12 * Math.sin(now / 400 + pu.x + pu.y);
+            mCtx.font = `${ts * 0.65 * pulse}px serif`;
+            mCtx.fillText('⚡', ox + pu.x * ts + ts/2, oy + pu.y * ts + ts/2);
+        });
+        // 🌀 傳送門（旋轉青色光環）
+        portals.forEach(pt => {
+            const cx = ox + pt.x * ts + ts/2, cy = oy + pt.y * ts + ts/2;
+            const spin = now / 500;
+            const r = ts * 0.48;
+            // 外層光暈
+            const grd = mCtx.createRadialGradient(cx, cy, r*0.3, cx, cy, r*1.2);
+            grd.addColorStop(0, 'rgba(0,220,255,0.0)');
+            grd.addColorStop(0.6, 'rgba(0,220,255,0.25)');
+            grd.addColorStop(1, 'rgba(0,220,255,0)');
+            mCtx.fillStyle = grd;
+            mCtx.beginPath(); mCtx.arc(cx, cy, r*1.2, 0, Math.PI*2); mCtx.fill();
+            // 旋轉弧
+            for (let i = 0; i < 3; i++) {
+                const a = spin + i * (Math.PI * 2 / 3);
+                mCtx.strokeStyle = `hsl(${(now/10 + i*120) % 360},100%,65%)`;
+                mCtx.lineWidth = ts * 0.1;
+                mCtx.lineCap = 'round';
                 mCtx.beginPath();
-                mCtx.arc(ox + p.x * tileSize + tileSize/2, oy + p.y * tileSize + tileSize/2, tileSize/2.5, 0, Math.PI*2);
-                mCtx.fill();
-                if (id === playerRole) {
-                    fCtx.beginPath();
-                    fCtx.arc(ox + p.x * tileSize + tileSize/2, oy + p.y * tileSize + tileSize/2, tileSize * 3.5, 0, Math.PI*2);
-                    fCtx.fill();
-                }
+                mCtx.arc(cx, cy, r, a, a + 1.2);
+                mCtx.stroke();
             }
-            if (data.ai) {
-                mCtx.fillStyle = '#a371f7';
-                mCtx.fillRect(ox + data.ai.x * tileSize + 2, oy + data.ai.y * tileSize + 2, tileSize - 4, tileSize - 4);
+            // 中心亮點
+            mCtx.fillStyle = 'rgba(0,240,255,0.85)';
+            mCtx.beginPath(); mCtx.arc(cx, cy, ts*0.1, 0, Math.PI*2); mCtx.fill();
+        });
+
+        // 💀 黑暗詭計（紅色光暈 + 骷髏）
+        darkTraps.forEach(dt => {
+            const pulse = 1 + 0.15 * Math.sin(now / 350 + dt.x * 2 + dt.y);
+            // 暗紅光暈
+            const grd = mCtx.createRadialGradient(
+                ox+dt.x*ts+ts/2, oy+dt.y*ts+ts/2, 0,
+                ox+dt.x*ts+ts/2, oy+dt.y*ts+ts/2, ts * 0.7
+            );
+            grd.addColorStop(0, 'rgba(180,0,0,0.45)');
+            grd.addColorStop(1, 'rgba(180,0,0,0)');
+            mCtx.fillStyle = grd;
+            mCtx.beginPath();
+            mCtx.arc(ox+dt.x*ts+ts/2, oy+dt.y*ts+ts/2, ts*0.7, 0, Math.PI*2);
+            mCtx.fill();
+            mCtx.font = `${ts * 0.62 * pulse}px serif`;
+            mCtx.fillText('💀', ox + dt.x * ts + ts/2, oy + dt.y * ts + ts/2);
+        });
+    }
+
+    // AI
+    if (!isMultiplayer && visualPos['ai']) {
+        const v = visualPos['ai'];
+        const cx = ox+v.x*ts+ts/2, cy = oy+v.y*ts+ts/2;
+
+        if (aiStunned) {
+            // 暈眩：灰色 + 旋轉星星
+            mCtx.fillStyle = '#6e6e8a';
+            mCtx.beginPath();
+            mCtx.arc(cx, cy, ts/2.5, 0, Math.PI*2);
+            mCtx.fill();
+            const now = performance.now();
+            for (let i = 0; i < 3; i++) {
+                const angle = (now / 600) + (i * Math.PI * 2 / 3);
+                mCtx.font = `${ts * 0.45}px serif`;
+                mCtx.textAlign = 'center';
+                mCtx.textBaseline = 'middle';
+                mCtx.fillText('★', cx + Math.cos(angle) * ts * 0.75, cy + Math.sin(angle) * ts * 0.75);
             }
-            fCtx.globalCompositeOperation = 'source-over';
+        } else {
+            mCtx.fillStyle = '#a371f7';
+            mCtx.beginPath();
+            mCtx.arc(cx, cy, ts/2.5, 0, Math.PI*2);
+            mCtx.fill();
         }
+    }
 
-        window.addEventListener('keydown', (e) => {
-            if (!canMove || isGameOver) return;
-            const now = Date.now();
-            moveCooldown = (stamina < 50) ? 400 : 200;
-            if (now - lastMoveTime < moveCooldown || stamina < 2) return;
+    // 本地玩家
+    const myId = isMultiplayer ? playerRole : 'player';
+    const pv = visualPos[myId];
+    if (pv) {
+        mCtx.fillStyle = '#58a6ff';
+        mCtx.beginPath();
+        mCtx.arc(ox+pv.x*ts+ts/2, oy+pv.y*ts+ts/2, ts/2.5, 0, Math.PI*2);
+        mCtx.fill();
+    }
 
-            let dx = 0, dy = 0;
-            if (['ArrowUp', 'w'].includes(e.key)) dy = -1;
-            else if (['ArrowDown', 's'].includes(e.key)) dy = 1;
-            else if (['ArrowLeft', 'a'].includes(e.key)) dx = -1;
-            else if (['ArrowRight', 'd'].includes(e.key)) dx = 1;
+    // 霧
+    fCtx.clearRect(0, 0, fCanvas.width, fCanvas.height);
+    fCtx.fillStyle = 'black';
+    fCtx.fillRect(0, 0, fCanvas.width, fCanvas.height);
+    if (pv) {
+        fCtx.globalCompositeOperation = 'destination-out';
+        const cx = ox+pv.x*ts+ts/2, cy = oy+pv.y*ts+ts/2, r = ts*3.8;
+        const grad = fCtx.createRadialGradient(cx, cy, 0, cx, cy, r);
+        grad.addColorStop(0,   'rgba(0,0,0,1)');
+        grad.addColorStop(0.6, 'rgba(0,0,0,0.85)');
+        grad.addColorStop(1,   'rgba(0,0,0,0)');
+        fCtx.fillStyle = grad;
+        fCtx.beginPath(); fCtx.arc(cx, cy, r, 0, Math.PI*2); fCtx.fill();
+        fCtx.globalCompositeOperation = 'source-over';
+    }
 
-            if (dx !== 0 || dy !== 0) {
-                let nx = myPos.x + dx;
-                let ny = myPos.y + dy;
-                if (mazeData[ny] && mazeData[ny][nx] === 0) {
-                    myPos = { x: nx, y: ny };
-                    stamina -= 2; lastMoveTime = now;
-                    update(ref(db, `rooms/${roomId}/players/${playerRole}`), myPos);
-                    updateUI();
-                }
+    // 對手（永遠顯示在霧上）
+    if (isMultiplayer) {
+        const otherId = playerRole === 'player1' ? 'player2' : 'player1';
+        const ov = visualPos[otherId];
+        if (ov) {
+            fCtx.strokeStyle = 'rgba(248,81,73,0.5)';
+            fCtx.lineWidth = 2;
+            fCtx.beginPath();
+            fCtx.arc(ox+ov.x*ts+ts/2, oy+ov.y*ts+ts/2, ts/2.5+3, 0, Math.PI*2);
+            fCtx.stroke();
+            fCtx.fillStyle = '#f85149';
+            fCtx.beginPath();
+            fCtx.arc(ox+ov.x*ts+ts/2, oy+ov.y*ts+ts/2, ts/2.5, 0, Math.PI*2);
+            fCtx.fill();
+        }
+    }
+}
+
+// ── 生成迷宮 ──────────────────────────────────────────────
+function generateMaze(size) {
+    const grid = Array(size).fill(null).map(() => Array(size).fill(1));
+    (function gen(x, y) {
+        grid[y][x] = 0;
+        for (const [dx, dy] of [[0,2],[0,-2],[2,0],[-2,0]].sort(() => Math.random()-0.5)) {
+            const nx = x+dx, ny = y+dy;
+            if (nx>0 && nx<size && ny>0 && ny<size && grid[ny][nx]===1) {
+                grid[y+dy/2][x+dx/2] = 0; gen(nx, ny);
+            }
+        }
+    })(1, 1);
+    return grid;
+}
+
+// ── 共用：進入遊戲 ─────────────────────────────────────────
+function enterGame(mode, role) {
+    resizeCanvas();
+    visualPos = {}; anims = {};
+    stamina = 100; lastMoveTime = 0;
+    isGameOver = false; canMove = true;
+    document.getElementById('lobby').style.display = 'none';
+    document.getElementById('waiting-overlay').style.display = 'none';
+    document.getElementById('game-container').style.display = 'block';
+    document.getElementById('game-over-overlay').style.display = 'none';
+    document.getElementById('ui-mode').innerText = mode;
+    document.getElementById('ui-role').innerText = role;
+    clearInterval(staminaTick);
+    staminaTick = setInterval(() => {
+        if (!canMove || isGameOver) return;
+        stamina = Math.min(100, stamina + (stamina >= 50 ? 4 : 2));
+        updateUI();
+    }, 200);
+    startAnimLoop();
+    updateUI();
+}
+
+// ── 單人 AI 模式 ──────────────────────────────────────────
+function startSinglePlayer(size) {
+    isMultiplayer = false; playerRole = null;
+    mazeSize = size;
+    goal  = { x: size-2, y: size-2 };
+    myPos = { x: 1, y: 1 };
+    aiPos = { x: size-2, y: 1 };
+    mazeData = generateMaze(size);
+    engine = new MazeEngine(size, mazeData);
+
+    // 隨機出生點：距終點至少 size/3 格、不是牆
+    const spawnCandidates = [];
+    for (let y = 1; y < size-1; y++)
+        for (let x = 1; x < size-1; x++)
+            if (mazeData[y][x] === 0 &&
+                Math.abs(x-(size-2)) + Math.abs(y-(size-2)) >= Math.floor(size/3))
+                spawnCandidates.push({x, y});
+    spawnCandidates.sort(() => Math.random()-0.5);
+    myPos = spawnCandidates[0] || {x:1, y:1};
+    aiPos = spawnCandidates[Math.floor(spawnCandidates.length * 0.6)] || {x:size-2, y:1};
+
+    // 道具初始化（互不重疊）
+    const fixed = [myPos, aiPos, goal];
+    const puCount = size > 25 ? 8 : 5;
+    const dtCount = size > 25 ? 6 : 4;
+    const ptCount = size > 25 ? 5 : 3;
+    powerUps  = spawnItems(size, mazeData, puCount, fixed);
+    darkTraps = spawnItems(size, mazeData, dtCount, [...fixed, ...powerUps]);
+    portals   = spawnItems(size, mazeData, ptCount, [...fixed, ...powerUps, ...darkTraps]);
+
+    aiStunned = false; controlsReversed = false;
+    clearInterval(stunTimerInterval); clearInterval(reverseTimerInterval);
+    document.getElementById('stun-indicator').style.display = 'none';
+    document.getElementById('reverse-indicator').style.display = 'none';
+    document.getElementById('teleport-flash').style.display = 'none';
+
+    enterGame('AI 追擊', '🔵 玩家');
+    moveTo('player', myPos.x, myPos.y);
+    moveTo('ai', aiPos.x, aiPos.y);
+    clearInterval(aiTick);
+    aiTick = setInterval(() => {
+        if (isGameOver || aiStunned) return;
+        const path = engine.findPath(aiPos, myPos);
+        if (path.length > 0) {
+            aiPos = { x: path[0].x, y: path[0].y };
+            moveTo('ai', aiPos.x, aiPos.y);
+            if (aiPos.x === myPos.x && aiPos.y === myPos.y) endGame('👾 你被抓住了...', '#f85149');
+        }
+    }, 400);
+}
+
+// ── 多人：建立房間（房主）────────────────────────────────
+function hostRoom(size) {
+    isMultiplayer = true; playerRole = 'player1';
+    mazeSize = size;
+    goal  = { x: size-2, y: size-2 };
+    myPos = { x: 1, y: 1 };
+    mazeData = generateMaze(size);
+    engine = new MazeEngine(size, mazeData);
+
+    // 產生 6 碼代碼作為 PeerJS ID
+    currentRoomCode = Math.random().toString(36).substring(2, 8).toUpperCase();
+
+    if (peer) peer.destroy();
+    peer = new Peer('maze-' + currentRoomCode);
+
+    peer.on('open', () => {
+        document.getElementById('lobby').style.display = 'none';
+        document.getElementById('waiting-overlay').style.display = 'block';
+        document.getElementById('room-id-box').innerText = currentRoomCode;
+    });
+
+    peer.on('connection', (c) => {
+        conn = c;
+        conn.on('open', () => {
+            // 把迷宮資料傳給對手
+            conn.send({ type: 'init', maze: mazeData, size: mazeSize, goal });
+            startMultiplayerGame();
+        });
+        conn.on('data', handlePeerData);
+        conn.on('close', () => { if (!isGameOver) endGame('⚠️ 對手斷線', '#8b949e'); });
+    });
+
+    peer.on('error', (err) => {
+        alert('建立房間失敗：' + err.type);
+        showPage('page-pvp');
+    });
+}
+
+// ── 多人：加入房間（對手）────────────────────────────────
+function joinRoom() {
+    const code = document.getElementById('roomInput').value.trim().toUpperCase();
+    if (code.length !== 6) { setStatus('請輸入 6 位代碼'); return; }
+    setStatus('連線中…');
+
+    isMultiplayer = true; playerRole = 'player2';
+    myPos = { x: 1, y: 1 };
+
+    if (peer) peer.destroy();
+    peer = new Peer();
+
+    peer.on('open', () => {
+        conn = peer.connect('maze-' + code, { reliable: true });
+        conn.on('open', () => setStatus('等待迷宮資料…'));
+        conn.on('data', (data) => {
+            if (data.type === 'init') {
+                mazeData = data.maze;
+                mazeSize = data.size;
+                goal = data.goal;
+                engine = new MazeEngine(mazeSize, mazeData);
+                startMultiplayerGame();
+            } else {
+                handlePeerData(data);
             }
         });
-    </script>
+        conn.on('close', () => { if (!isGameOver) endGame('⚠️ 對手斷線', '#8b949e'); });
+        conn.on('error', () => setStatus('連線失敗，請確認代碼'));
+    });
+
+    peer.on('error', (err) => {
+        if (err.type === 'peer-unavailable') setStatus('找不到房間，請確認代碼');
+        else setStatus('錯誤：' + err.type);
+    });
+}
+
+// ── 多人：啟動對戰 ─────────────────────────────────────────
+function startMultiplayerGame() {
+    const roleLabel = playerRole === 'player1' ? '🔵 藍方（你）' : '🔴 紅方（你）';
+    enterGame('雙人對戰', roleLabel);
+    moveTo('player1', 1, 1);
+    moveTo('player2', 1, 1);
+}
+
+// ── 多人：收到對手訊息 ─────────────────────────────────────
+function handlePeerData(data) {
+    if (data.type === 'pos') {
+        const otherId = playerRole === 'player1' ? 'player2' : 'player1';
+        moveTo(otherId, data.x, data.y);
+        if (data.x === goal.x && data.y === goal.y) endGame('😞 對手先到終點！', '#f85149');
+    }
+}
+
+// ── 鍵盤 ──────────────────────────────────────────────────
+window.addEventListener('keydown', (e) => {
+    if (!canMove || isGameOver) return;
+    const now = Date.now();
+    const cooldown = stamina < 50 ? 350 : 180;
+    if (now - lastMoveTime < cooldown || stamina < 2) return;
+
+    let dx = 0, dy = 0;
+    if      (['ArrowUp',    'w'].includes(e.key)) dy = -1;
+    else if (['ArrowDown',  's'].includes(e.key)) dy =  1;
+    else if (['ArrowLeft',  'a'].includes(e.key)) dx = -1;
+    else if (['ArrowRight', 'd'].includes(e.key)) dx =  1;
+    else return;
+    e.preventDefault();
+
+    // 黑暗詭計：反轉操控
+    if (controlsReversed) { dx = -dx; dy = -dy; }
+
+    const nx = myPos.x+dx, ny = myPos.y+dy;
+    if (!mazeData[ny] || mazeData[ny][nx] !== 0) return;
+
+    myPos = { x: nx, y: ny };
+    moveTo(isMultiplayer ? playerRole : 'player', nx, ny);
+    stamina -= 2; lastMoveTime = now;
+    updateUI();
+
+    // 碰到道具 / 陷阱
+    if (!isMultiplayer) {
+        const puIdx = powerUps.findIndex(p => p.x === nx && p.y === ny);
+        if (puIdx !== -1) { powerUps.splice(puIdx, 1); activateStun(); }
+
+        const dtIdx = darkTraps.findIndex(p => p.x === nx && p.y === ny);
+        if (dtIdx !== -1) { darkTraps.splice(dtIdx, 1); activateReverse(); }
+
+        const ptIdx = portals.findIndex(p => p.x === nx && p.y === ny);
+        if (ptIdx !== -1) { teleportPlayer(); }   // 傳送門不消耗（可重複使用）
+    }
+
+    if (isMultiplayer && conn) conn.send({ type: 'pos', x: nx, y: ny });
+
+    if (nx === goal.x && ny === goal.y) endGame('🎉 逃脫成功！🏆', '#238636');
+    if (!isMultiplayer && aiPos && nx === aiPos.x && ny === aiPos.y) endGame('👾 你被抓住了...', '#f85149');
+});
+
+// ── 結束 ──────────────────────────────────────────────────
+function endGame(text, color) {
+    isGameOver = true; canMove = false;
+    clearInterval(aiTick); clearInterval(staminaTick);
+    clearInterval(stunTimerInterval); clearInterval(reverseTimerInterval);
+    document.getElementById('end-title').innerText = text;
+    document.getElementById('end-title').style.color = color;
+    document.getElementById('game-over-overlay').style.display = 'flex';
+}
+
+// ── 體力 UI ───────────────────────────────────────────────
+function updateUI() {
+    const fill = document.getElementById('stamina-bar-fill');
+    fill.style.width = stamina + '%';
+    document.getElementById('stamina-pct').innerText = Math.floor(stamina) + '%';
+    fill.style.background = stamina < 30 ? '#f85149' : stamina < 50 ? '#f1e05a' : '#238636';
+    document.getElementById('warning-text').style.display = stamina < 2 ? 'block' : 'none';
+}
+
+// ── 工具 ──────────────────────────────────────────────────
+function showPage(id) {
+    document.querySelectorAll('.menu-page').forEach(p => p.classList.remove('active'));
+    document.getElementById(id).classList.add('active');
+    setStatus('');
+}
+function setStatus(msg) {
+    document.getElementById('connect-status').innerText = msg;
+}
+function copyRoomId() {
+    navigator.clipboard.writeText(currentRoomCode).then(() => {
+        const box = document.getElementById('room-id-box');
+        const orig = box.innerText;
+        box.innerText = '已複製！';
+        setTimeout(() => box.innerText = orig, 1200);
+    });
+}
+
+// 暴露給 HTML onclick
+window.showPage = showPage;
+window.startSinglePlayer = startSinglePlayer;
+window.hostRoom = hostRoom;
+window.joinRoom = joinRoom;
+window.copyRoomId = copyRoomId;
+</script>
 </body>
 </html>

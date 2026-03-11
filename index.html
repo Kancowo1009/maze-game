@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <title>迷霧探險：戰術能量版</title>
+    <style>
+        body, html { margin: 0; padding: 0; width: 100%; height: 100%; background: #000; overflow: hidden; font-family: 'Microsoft JhengHei', sans-serif; }
+        #lobby { position: absolute; z-index: 100; top: 50%; left: 50%; transform: translate(-50%, -50%); background: rgba(22, 27, 34, 0.95); padding: 40px; border-radius: 15px; text-align: center; border: 1px solid #30363d; color: white; min-width: 350px; }
+        .menu-page { display: none; }
+        .menu-page.active { display: block; }
+        #game-container { width: 100vw; height: 100vh; position: relative; display: none; }
+        canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
+        #mazeCanvas { z-index: 5; }
+        #fogCanvas { z-index: 10; pointer-events: none; }
+        
+        /* 介面 UI */
+        #ui-layer { position: absolute; top: 20px; left: 20px; z-index: 50; background: rgba(0,0,0,0.7); padding: 12px 20px; border-radius: 8px; color: white; border: 1px solid rgba(88, 166, 255, 0.3); }
+        #stamina-container { position: absolute; bottom: 20px; right: 20px; z-index: 50; background: rgba(0,0,0,0.8); padding: 15px; border-radius: 10px; border: 1px solid #30363d; width: 220px; }
+        #stamina-bar-bg { width: 100%; height: 12px; background: #21262d; border-radius: 6px; overflow: hidden; }
+        #stamina-bar-fill { width: 100%; height: 100%; background: #238636; transition: width 0.1s linear; }
+        #stamina-text { color: white; font-size: 14px; font-weight: bold; margin-bottom: 5px; display: flex; justify-content: space-between; }
+        #warning-text { color: #f85149; font-size: 11px; text-align: center; margin-top: 5px; display: none; animation: blink 1s infinite; }
+        @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+
+        /* 全螢幕結束大字樣式 */
+        #game-over-overlay { 
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%; 
+            background: rgba(0, 0, 0, 0.85); z-index: 200; 
+            display: none; flex-direction: column; justify-content: center; align-items: center; 
+            color: white; text-align: center; backdrop-filter: blur(5px);
+        }
+        #end-title { font-size: 64px; font-weight: bold; margin-bottom: 20px; text-shadow: 0 0 20px rgba(255,255,255,0.5); }
+        #end-subtitle { font-size: 24px; color: #8b949e; margin-bottom: 30px; }
+
+        #ready-overlay { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 60; background: rgba(13, 17, 23, 0.95); padding: 40px; border-radius: 15px; text-align: center; border: 2px solid #58a6ff; color: white; }
+        button { background: #238636; color: white; border: none; padding: 12px 24px; border-radius: 8px; cursor: pointer; font-weight: bold; margin: 10px; font-size: 16px; transition: 0.2s; }
+        button:hover { background: #2ea043; transform: scale(1.05); }
+        input { padding: 12px; background: #0d1117; border: 1px solid #30363d; color: white; border-radius: 6px; margin: 10px; }
+    </style>
+</head>
+<body>
+
+    <div id="lobby">
+        <div id="page-mode" class="menu-page active">
+            <h1>迷霧探險</h1>
+            <button onclick="showPage('page-size-ai')">AI 追擊模式</button>
+            <button onclick="showPage('page-size-pvp')">雙人對戰模式</button>
+        </div>
+        <div id="page-size-ai" class="menu-page">
+            <h1>選擇 AI 難度</h1>
+            <button onclick="startGame(21, true)">20x20 小型</button>
+            <button onclick="startGame(41, true)">40x40 大型</button>
+            <br><button style="background:#444" onclick="showPage('page-mode')">返回</button>
+        </div>
+        <div id="page-size-pvp" class="menu-page">
+            <h1>雙人對戰</h1>
+            <button onclick="startGame(21, false)">建立 20x20 房間</button>
+            <hr style="border:0.5px solid #333; margin:20px 0;">
+            <input type="text" id="roomInput" placeholder="輸入房間 ID">
+            <button onclick="joinRoom()">加入房間</button>
+            <br><button style="background:#444" onclick="showPage('page-mode')">返回</button>
+        </div>
+    </div>
+
+    <div id="game-container">
+        <div id="game-over-overlay">
+            <div id="end-title"></div>
+            <div id="end-subtitle">感謝遊玩</div>
+            <button onclick="window.location.reload()" style="background: #58a6ff;">回到主頁</button>
+        </div>
+
+        <div id="ui-layer">房間: <span id="displayId" style="color:#58a6ff"></span> | <span id="status-text">準備中</span></div>
+        
+        <div id="stamina-container">
+            <div id="stamina-text"><span>能量</span><span id="stamina-pct">100%</span></div>
+            <div id="stamina-bar-bg"><div id="stamina-bar-fill"></div></div>
+            <div id="warning-text">⚠️ 能量枯竭：無法移動</div>
+        </div>
+
+        <div id="ready-overlay">
+            <h2>等待雙方就緒</h2>
+            <button id="btn-ready">我準備好了</button>
+        </div>
+
+        <canvas id="mazeCanvas"></canvas>
+        <canvas id="fogCanvas"></canvas>
+    </div>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+        import { getDatabase, ref, set, onValue, update, get } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
+
+        // Firebase 設定與初始化 (沿用原有的)
+        const firebaseConfig = {
+            apiKey: "AIzaSyD7yvejwpRsWLEn_xFg-hyDEXulsinLfO4",
+            authDomain: "maze-battle-c7392.firebaseapp.com",
+            databaseURL: "https://maze-battle-c7392-default-rtdb.asia-southeast1.firebasedatabase.app",
+            projectId: "maze-battle-c7392",
+            storageBucket: "maze-battle-c7392.firebasestorage.app",
+            messagingSenderId: "718695400645",
+            appId: "1:718695400645:web:cc111a4319017c8250dcac"
+        };
+        const app = initializeApp(firebaseConfig);
+        const db = getDatabase(app);
+
+        // A* 尋路與變數宣告
+        class MazeEngine {
+            constructor(size, grid) { this.size = size; this.grid = grid; }
+            findPath(start, target) {
+                if (!start || !target) return [];
+                const openList = [{...start, g: 0, h: Math.abs(start.x-target.x)+Math.abs(start.y-target.y), parent: null}];
+                const closedList = new Set();
+                while (openList.length > 0) {
+                    openList.sort((a, b) => (a.g + a.h) - (b.g + b.h));
+                    const curr = openList.shift();
+                    if (curr.x === target.x && curr.y === target.y) {
+                        let path = []; let t = curr; while(t.parent) { path.push(t); t = t.parent; } return path.reverse();
+                    }
+                    closedList.add(`${curr.x},${curr.y}`);
+                    for (let [dx, dy] of [[0,1],[0,-1],[1,0],[-1,0]]) {
+                        let nx = curr.x+dx, ny = curr.y+dy;
+                        if (nx>=0 && ny>=0 && nx<this.size && ny<this.size && this.grid[ny][nx]===0 && !closedList.has(`${nx},${ny}`)) {
+                            if (!openList.find(o => o.x===nx && o.y===ny)) openList.push({x:nx, y:ny, g:curr.g+1, h:Math.abs(nx-target.x)+Math.abs(ny-target.y), parent:curr});
+                        }
+                    }
+                }
+                return [];
+            }
+        }
+
+        let roomId, playerRole, mazeData, mazeSize, tileSize, isAIMode;
+        let myPos = { x: 1, y: 1 };
+        let canMove = false;
+        let stamina = 100;
+        let lastMoveTime = 0;
+        let moveCooldown = 200;
+        let aiTick = null;
+        let isGameOver = false;
+
+        const mCanvas = document.getElementById('mazeCanvas');
+        const fCanvas = document.getElementById('fogCanvas');
+        const mCtx = mCanvas.getContext('2d');
+        const fCtx = fCanvas.getContext('2d');
+
+        window.showPage = (id) => {
+            document.querySelectorAll('.menu-page').forEach(p => p.classList.remove('active'));
+            document.getElementById(id).classList.add('active');
+        };
+
+        window.startGame = async (size, useAI) => {
+            roomId = Math.random().toString(36).substring(7);
+            playerRole = 'player1';
+            mazeSize = size;
+            isAIMode = useAI;
+            const grid = Array(size).fill().map(() => Array(size).fill(1));
+            const gen = (x, y) => {
+                grid[y][x] = 0;
+                const dirs = [[0,2],[0,-2],[2,0],[-2,0]].sort(() => Math.random()-0.5);
+                for(let [dx,dy] of dirs){
+                    let nx=x+dx, ny=y+dy;
+                    if(nx>0 && nx<size && ny>0 && ny<size && grid[ny][nx]===1){ grid[y+dy/2][x+dx/2]=0; gen(nx, ny); }
+                }
+            };
+            gen(1,1);
+            await set(ref(db, `rooms/${roomId}`), {
+                status: 'waiting', maze: grid, size: size,
+                goal: {x: size-2, y: size-2},
+                players: { player1: {x:1, y:1, ready: false} },
+                isAIMode: useAI
+            });
+            initGame();
+        };
+
+        window.joinRoom = async () => {
+            roomId = document.getElementById('roomInput').value;
+            if(!roomId) return;
+            playerRole = 'player2';
+            const snap = await get(ref(db, `rooms/${roomId}`));
+            if(!snap.exists()) return alert("找不到房間");
+            await update(ref(db, `rooms/${roomId}/players/player2`), {x:1, y:1, ready: false});
+            initGame();
+        };
+
+        function initGame() {
+            document.getElementById('lobby').style.display = 'none';
+            document.getElementById('game-container').style.display = 'block';
+            document.getElementById('displayId').innerText = roomId;
+
+            document.getElementById('btn-ready').onclick = () => {
+                update(ref(db, `rooms/${roomId}/players/${playerRole}`), { ready: true });
+                document.getElementById('btn-ready').disabled = true;
+                document.getElementById('btn-ready').innerText = "等待中...";
+            };
+
+            // 原地回能系統
+            setInterval(() => {
+                if (!canMove || isGameOver) return;
+                const now = Date.now();
+                if (now - lastMoveTime >= moveCooldown) {
+                    stamina = Math.min(100, stamina + (stamina >= 50 ? 4 : 2));
+                    updateUI();
+                }
+            }, 200);
+
+            onValue(ref(db, `rooms/${roomId}`), (snap) => {
+                const data = snap.val();
+                if (!data || isGameOver) return;
+                mazeData = data.maze; mazeSize = data.size;
+
+                mCanvas.width = fCanvas.width = window.innerWidth;
+                mCanvas.height = fCanvas.height = window.innerHeight;
+                tileSize = Math.min(mCanvas.width, mCanvas.height) / (mazeSize + 2);
+
+                if (data.players.player1?.ready && (data.isAIMode || data.players.player2?.ready) && data.status !== 'playing') {
+                    update(ref(db, `rooms/${roomId}`), { status: 'playing' });
+                    if (data.isAIMode) setTimeout(() => update(ref(db, `rooms/${roomId}/ai`), {x:1, y:1}), 3000);
+                }
+
+                if (data.status === 'playing') {
+                    document.getElementById('ready-overlay').style.display = 'none';
+                    document.getElementById('status-text').innerText = "生存中";
+                    canMove = true;
+
+                    if (playerRole === 'player1' && data.isAIMode && data.ai && !aiTick) {
+                        const engine = new MazeEngine(mazeSize, mazeData);
+                        aiTick = setInterval(async () => {
+                            const d = (await get(ref(db, `rooms/${roomId}`))).val();
+                            if (isGameOver) return;
+                            const path = engine.findPath(d.ai, d.players.player1);
+                            if (path.length > 0) update(ref(db, `rooms/${roomId}/ai`), {x: path[0].x, y: path[0].y});
+                        }, 400); // AI 400ms
+                    }
+                }
+
+                draw(data);
+
+                // 判斷勝負 (使用全螢幕 UI)
+                const me = data.players[playerRole];
+                if (me.x === data.goal.x && me.y === data.goal.y) {
+                    endGame("🎉 逃脫成功！🏆", "#238636");
+                } else if (data.ai && me.x === data.ai.x && me.y === data.ai.y) {
+                    endGame("👾 你被抓住了...👻", "#f85149");
+                }
+            });
+        }
+
+        function endGame(text, color) {
+            isGameOver = true;
+            canMove = false;
+            clearInterval(aiTick);
+            const overlay = document.getElementById('game-over-overlay');
+            const title = document.getElementById('end-title');
+            title.innerText = text;
+            title.style.color = color;
+            overlay.style.display = 'flex';
+        }
+
+        function updateUI() {
+            const bar = document.getElementById('stamina-bar-fill');
+            bar.style.width = stamina + '%';
+            document.getElementById('stamina-pct').innerText = stamina + '%';
+            bar.style.background = stamina < 30 ? '#f85149' : (stamina < 50 ? '#f1e05a' : '#238636');
+            document.getElementById('warning-text').style.display = stamina < 2 ? 'block' : 'none';
+        }
+
+        function draw(data) {
+            mCtx.clearRect(0, 0, mCanvas.width, mCanvas.height);
+            const ox = (mCanvas.width - mazeSize * tileSize) / 2;
+            const oy = (mCanvas.height - mazeSize * tileSize) / 2;
+
+            mazeData.forEach((row, y) => row.forEach((cell, x) => {
+                if (cell === 1) {
+                    mCtx.fillStyle = '#161b22';
+                    mCtx.fillRect(ox + x * tileSize, oy + y * tileSize, tileSize + 0.5, tileSize + 0.5);
+                }
+            }));
+
+            mCtx.fillStyle = '#f1e05a';
+            mCtx.fillRect(ox + data.goal.x * tileSize, oy + data.goal.y * tileSize, tileSize, tileSize);
+
+            fCtx.clearRect(0, 0, fCanvas.width, fCanvas.height);
+            fCtx.fillStyle = 'black';
+            fCtx.fillRect(0, 0, fCanvas.width, fCanvas.height);
+            fCtx.globalCompositeOperation = 'destination-out';
+
+            for (let id in data.players) {
+                const p = data.players[id];
+                mCtx.fillStyle = id === 'player1' ? '#58a6ff' : '#f85149';
+                mCtx.beginPath();
+                mCtx.arc(ox + p.x * tileSize + tileSize/2, oy + p.y * tileSize + tileSize/2, tileSize/2.5, 0, Math.PI*2);
+                mCtx.fill();
+                if (id === playerRole) {
+                    fCtx.beginPath();
+                    fCtx.arc(ox + p.x * tileSize + tileSize/2, oy + p.y * tileSize + tileSize/2, tileSize * 3.5, 0, Math.PI*2);
+                    fCtx.fill();
+                }
+            }
+            if (data.ai) {
+                mCtx.fillStyle = '#a371f7';
+                mCtx.fillRect(ox + data.ai.x * tileSize + 2, oy + data.ai.y * tileSize + 2, tileSize - 4, tileSize - 4);
+            }
+            fCtx.globalCompositeOperation = 'source-over';
+        }
+
+        window.addEventListener('keydown', (e) => {
+            if (!canMove || isGameOver) return;
+            const now = Date.now();
+            moveCooldown = (stamina < 50) ? 400 : 200;
+            if (now - lastMoveTime < moveCooldown || stamina < 2) return;
+
+            let dx = 0, dy = 0;
+            if (['ArrowUp', 'w'].includes(e.key)) dy = -1;
+            else if (['ArrowDown', 's'].includes(e.key)) dy = 1;
+            else if (['ArrowLeft', 'a'].includes(e.key)) dx = -1;
+            else if (['ArrowRight', 'd'].includes(e.key)) dx = 1;
+
+            if (dx !== 0 || dy !== 0) {
+                let nx = myPos.x + dx;
+                let ny = myPos.y + dy;
+                if (mazeData[ny] && mazeData[ny][nx] === 0) {
+                    myPos = { x: nx, y: ny };
+                    stamina -= 2; lastMoveTime = now;
+                    update(ref(db, `rooms/${roomId}/players/${playerRole}`), myPos);
+                    updateUI();
+                }
+            }
+        });
+    </script>
+</body>
+</html>
